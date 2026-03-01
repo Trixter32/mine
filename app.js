@@ -2,6 +2,9 @@ const STORAGE_KEY = "dls_competition_hub_v2";
 const UNIVERSAL_ADMIN_PIN = "35786491";
 const CLOUD_SYNC_CONFIG_KEY = "dls_cloud_sync_config_v1";
 const CLOUD_SYNC_POLL_MS = 5000;
+// Set this to your realtime backend URL (e.g. Firebase Realtime Database root URL).
+// Keep it hidden here; users won't see it on the page.
+const HIDDEN_CLOUD_SYNC_URL = "https://txtdls-default-rtdb.firebaseio.com";
 
 const defaultState = {
   adminPin: "35786491",
@@ -140,6 +143,9 @@ function saveState(options = {}) {
 
 function loadCloudSyncConfig() {
   try {
+    const hiddenUrl = normalizeCloudSyncUrl(HIDDEN_CLOUD_SYNC_URL);
+    if (hiddenUrl) return { url: hiddenUrl };
+
     const raw = localStorage.getItem(CLOUD_SYNC_CONFIG_KEY);
     if (!raw) return { url: "" };
     const parsed = JSON.parse(raw);
