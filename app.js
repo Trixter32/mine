@@ -2,6 +2,8 @@ const STORAGE_KEY = "dls_competition_hub_v2";
 const UNIVERSAL_ADMIN_PIN = "35786491";
 const CLOUD_SYNC_CONFIG_KEY = "dls_cloud_sync_config_v1";
 const CLOUD_SYNC_POLL_MS = 5000;
+const CLOUD_PUSH_DEBOUNCE_MS = 350;
+const CLOUD_CACHE_BUSTER_KEY = "_ts";
 // Set this to your realtime backend URL (e.g. Firebase Realtime Database root URL).
 // Keep it hidden here; users won't see it on the page.
 const HIDDEN_CLOUD_SYNC_URL = "https://txtdls-default-rtdb.firebaseio.com";
@@ -21,6 +23,8 @@ let adminApproved = false;
 let cloudSyncConfig = loadCloudSyncConfig();
 let cloudPollTimer = null;
 let cloudPushTimer = null;
+let cloudPullInFlight = false;
+let cloudErrorShown = false;
 
 const el = {
   adminStatusText: document.getElementById("adminStatusText"),
@@ -81,10 +85,12 @@ init();
 function init() {
   fillCupGroupCountInput();
   bindEvents();
+  bindCloudRuntimeEvents();
   renderAll();
   renderCloudSyncConfig();
   startCloudSyncLoop();
   syncFromCloud();
+  warnIfRunningFromLocalFile();
 }
 
 function bindEvents() {
@@ -113,6 +119,26 @@ function bindEvents() {
   el.cupSearchResults.addEventListener("click", onCupSearchClick);
 }
 
+function bindCloudRuntimeEvents() {
+  window.addEventListener("focus", () => {
+    syncFromCloud();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      syncFromCloud();
+      return;
+    }
+    // Try to flush latest edits before app is backgrounded/closed.
+    pushStateToCloud({ keepalive: true, silent: true });
+  });
+}
+
+function warnIfRunningFromLocalFile() {
+  if (window.location.protocol !== "file:") return;
+  window.alert("You opened the app as a local file. For shared results across devices, use your live website URL.");
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -137,6 +163,8 @@ function normalizeState(parsed) {
 function saveState(options = {}) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   if (!options.skipCloudPush) {
+    // Fire one immediate push so other devices can see updates quickly.
+    pushStateToCloud({ silent: true });
     queueCloudSyncPush();
   }
 }
@@ -244,25 +272,44 @@ function queueCloudSyncPush() {
   }
   cloudPushTimer = setTimeout(() => {
     pushStateToCloud();
-  }, 350);
+  }, CLOUD_PUSH_DEBOUNCE_MS);
 }
 
-async function pushStateToCloud() {
+function getCloudPullEndpointNoCache() {
+  const endpoint = getCloudSyncEndpoint();
+  if (!endpoint) return "";
+  return `${endpoint}?${CLOUD_CACHE_BUSTER_KEY}=${Date.now()}`;
+}
+
+function showCloudFailureOnce(action, error) {
+  console.error(`[Cloud sync] ${action} failed`, error);
+  if (cloudErrorShown) return;
+  cloudErrorShown = true;
+  window.alert("Cloud sync failed. Changes may stay only on this device. Check internet and Firebase database rules.");
+}
+
+async function pushStateToCloud(options = {}) {
   if (!isCloudSyncEnabled()) return;
+  const { keepalive = false, silent = false } = options;
 
   const endpoint = getCloudSyncEndpoint();
   try {
     const response = await fetch(endpoint, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
+      keepalive,
       body: JSON.stringify(state)
     });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
+    cloudErrorShown = false;
     setCloudSyncStatus("Cloud sync: Updated");
-  } catch {
+  } catch (error) {
     setCloudSyncStatus("Cloud sync: Failed to push", true);
+    if (!silent) {
+      showCloudFailureOnce("push", error);
+    }
   }
 }
 
@@ -283,9 +330,11 @@ function repairSelectionsAfterStateSwap() {
 
 async function syncFromCloud() {
   if (!isCloudSyncEnabled()) return;
+  if (cloudPullInFlight) return;
+  cloudPullInFlight = true;
 
-  const endpoint = getCloudSyncEndpoint();
   try {
+    const endpoint = getCloudPullEndpointNoCache();
     const response = await fetch(endpoint, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
@@ -306,12 +355,17 @@ async function syncFromCloud() {
       repairSelectionsAfterStateSwap();
       saveState({ skipCloudPush: true });
       renderAll();
+      cloudErrorShown = false;
       setCloudSyncStatus("Cloud sync: Pulled latest");
     } else {
+      cloudErrorShown = false;
       setCloudSyncStatus("Cloud sync: Online");
     }
-  } catch {
+  } catch (error) {
     setCloudSyncStatus("Cloud sync: Failed to pull", true);
+    showCloudFailureOnce("pull", error);
+  } finally {
+    cloudPullInFlight = false;
   }
 }
 
