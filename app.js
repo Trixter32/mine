@@ -1,5 +1,7 @@
 const STORAGE_KEY = "dls_competition_hub_v2";
 const UNIVERSAL_ADMIN_PIN = "35786491";
+const CLOUD_SYNC_CONFIG_KEY = "dls_cloud_sync_config_v1";
+const CLOUD_SYNC_POLL_MS = 5000;
 
 const defaultState = {
   adminPin: "35786491",
@@ -13,15 +15,15 @@ let currentCupId = null;
 let unlockedLeagueId = null;
 let unlockedCupId = null;
 let adminApproved = false;
+let cloudSyncConfig = loadCloudSyncConfig();
+let cloudPollTimer = null;
+let cloudPushTimer = null;
 
 const el = {
   adminStatusText: document.getElementById("adminStatusText"),
   approveAdminBtn: document.getElementById("approveAdminBtn"),
   lockAdminBtn: document.getElementById("lockAdminBtn"),
-  changePinForm: document.getElementById("changePinForm"),
-  currentPinInput: document.getElementById("currentPinInput"),
-  newPinInput: document.getElementById("newPinInput"),
-  confirmNewPinInput: document.getElementById("confirmNewPinInput"),
+  changePinPromptBtn: document.getElementById("changePinPromptBtn"),
 
   createLeagueForm: document.getElementById("createLeagueForm"),
   leagueNameInput: document.getElementById("leagueNameInput"),
@@ -77,12 +79,15 @@ function init() {
   fillCupGroupCountInput();
   bindEvents();
   renderAll();
+  renderCloudSyncConfig();
+  startCloudSyncLoop();
+  syncFromCloud();
 }
 
 function bindEvents() {
   el.approveAdminBtn.addEventListener("click", onApproveAdmin);
   el.lockAdminBtn.addEventListener("click", onLockAdmin);
-  el.changePinForm.addEventListener("submit", onChangeAdminPin);
+  el.changePinPromptBtn.addEventListener("click", onChangeAdminPin);
 
   el.createLeagueForm.addEventListener("submit", onCreateLeague);
   el.leagueSearchInput.addEventListener("input", renderLeagueSearchResults);
@@ -110,20 +115,199 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return structuredClone(defaultState);
     const parsed = JSON.parse(raw);
-    const parsedPin = typeof parsed.adminPin === "string" ? parsed.adminPin : "";
-    const adminPin = !parsedPin || parsedPin === "1234" ? "35786491" : parsedPin;
-    return {
-      adminPin,
-      leagues: Array.isArray(parsed.leagues) ? parsed.leagues : [],
-      cups: Array.isArray(parsed.cups) ? parsed.cups : []
-    };
+    return normalizeState(parsed);
   } catch {
     return structuredClone(defaultState);
   }
 }
 
-function saveState() {
+function normalizeState(parsed) {
+  const parsedPin = typeof parsed?.adminPin === "string" ? parsed.adminPin : "";
+  const adminPin = !parsedPin || parsedPin === "1234" ? "35786491" : parsedPin;
+  return {
+    adminPin,
+    leagues: Array.isArray(parsed?.leagues) ? parsed.leagues : [],
+    cups: Array.isArray(parsed?.cups) ? parsed.cups : []
+  };
+}
+
+function saveState(options = {}) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (!options.skipCloudPush) {
+    queueCloudSyncPush();
+  }
+}
+
+function loadCloudSyncConfig() {
+  try {
+    const raw = localStorage.getItem(CLOUD_SYNC_CONFIG_KEY);
+    if (!raw) return { url: "" };
+    const parsed = JSON.parse(raw);
+    return { url: normalizeCloudSyncUrl(parsed?.url || "") };
+  } catch {
+    return { url: "" };
+  }
+}
+
+function saveCloudSyncConfig() {
+  localStorage.setItem(CLOUD_SYNC_CONFIG_KEY, JSON.stringify(cloudSyncConfig));
+}
+
+function normalizeCloudSyncUrl(url) {
+  let value = String(url || "").trim();
+  if (!value) return "";
+
+  value = value.replace(/\/+$/, "");
+  if (value.toLowerCase().endsWith(".json")) {
+    value = value.slice(0, -5);
+  }
+  if (value.endsWith(`/${STORAGE_KEY}`)) {
+    value = value.slice(0, -(STORAGE_KEY.length + 1));
+  }
+
+  return value;
+}
+
+function isCloudSyncEnabled() {
+  return Boolean(cloudSyncConfig.url);
+}
+
+function getCloudSyncEndpoint() {
+  if (!isCloudSyncEnabled()) return "";
+  return `${cloudSyncConfig.url}/${STORAGE_KEY}.json`;
+}
+
+function setCloudSyncStatus(message, isError = false) {
+  if (!el.cloudSyncStatus) return;
+  el.cloudSyncStatus.textContent = message;
+  el.cloudSyncStatus.style.color = isError ? "#ff8f8f" : "#b8cfdf";
+}
+
+function renderCloudSyncConfig() {
+  if (!el.cloudSyncUrlInput) return;
+  el.cloudSyncUrlInput.value = cloudSyncConfig.url || "";
+  if (!isCloudSyncEnabled()) {
+    setCloudSyncStatus("Cloud sync: Off");
+    return;
+  }
+  setCloudSyncStatus("Cloud sync: Configured");
+}
+
+function onSaveCloudSyncConfig(event) {
+  event.preventDefault();
+  if (!ensureAdminApproved()) return;
+
+  const url = normalizeCloudSyncUrl(el.cloudSyncUrlInput.value);
+  cloudSyncConfig = { url };
+  saveCloudSyncConfig();
+  renderCloudSyncConfig();
+  startCloudSyncLoop();
+
+  if (isCloudSyncEnabled()) {
+    setCloudSyncStatus("Cloud sync: Connecting...");
+    syncFromCloud();
+  } else {
+    setCloudSyncStatus("Cloud sync: Off");
+  }
+}
+
+function onManualSyncNow() {
+  if (!isCloudSyncEnabled()) {
+    window.alert("Set a cloud sync URL first.");
+    return;
+  }
+  syncFromCloud();
+}
+
+function startCloudSyncLoop() {
+  if (cloudPollTimer) {
+    clearInterval(cloudPollTimer);
+    cloudPollTimer = null;
+  }
+  if (!isCloudSyncEnabled()) return;
+
+  cloudPollTimer = setInterval(() => {
+    syncFromCloud();
+  }, CLOUD_SYNC_POLL_MS);
+}
+
+function queueCloudSyncPush() {
+  if (!isCloudSyncEnabled()) return;
+  if (cloudPushTimer) {
+    clearTimeout(cloudPushTimer);
+  }
+  cloudPushTimer = setTimeout(() => {
+    pushStateToCloud();
+  }, 350);
+}
+
+async function pushStateToCloud() {
+  if (!isCloudSyncEnabled()) return;
+
+  const endpoint = getCloudSyncEndpoint();
+  try {
+    const response = await fetch(endpoint, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state)
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    setCloudSyncStatus("Cloud sync: Updated");
+  } catch {
+    setCloudSyncStatus("Cloud sync: Failed to push", true);
+  }
+}
+
+function repairSelectionsAfterStateSwap() {
+  if (!state.leagues.some((league) => league.id === currentLeagueId)) {
+    currentLeagueId = state.leagues[0]?.id || null;
+  }
+  if (!state.cups.some((cup) => cup.id === currentCupId)) {
+    currentCupId = state.cups[0]?.id || null;
+  }
+  if (!state.leagues.some((league) => league.id === unlockedLeagueId)) {
+    unlockedLeagueId = null;
+  }
+  if (!state.cups.some((cup) => cup.id === unlockedCupId)) {
+    unlockedCupId = null;
+  }
+}
+
+async function syncFromCloud() {
+  if (!isCloudSyncEnabled()) return;
+
+  const endpoint = getCloudSyncEndpoint();
+  try {
+    const response = await fetch(endpoint, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const remote = await response.json();
+
+    if (!remote) {
+      await pushStateToCloud();
+      return;
+    }
+
+    const normalizedRemote = normalizeState(remote);
+    const localJson = JSON.stringify(state);
+    const remoteJson = JSON.stringify(normalizedRemote);
+
+    if (localJson !== remoteJson) {
+      state = normalizedRemote;
+      adminApproved = false;
+      repairSelectionsAfterStateSwap();
+      saveState({ skipCloudPush: true });
+      renderAll();
+      setCloudSyncStatus("Cloud sync: Pulled latest");
+    } else {
+      setCloudSyncStatus("Cloud sync: Online");
+    }
+  } catch {
+    setCloudSyncStatus("Cloud sync: Failed to pull", true);
+  }
 }
 
 function fillCupGroupCountInput() {
@@ -168,22 +352,25 @@ function onLockAdmin() {
   renderCupView();
 }
 
-function onChangeAdminPin(event) {
-  event.preventDefault();
-
-  const currentPin = el.currentPinInput.value.trim();
-  const newPin = el.newPinInput.value.trim();
-  const confirmPin = el.confirmNewPinInput.value.trim();
+function onChangeAdminPin() {
+  const currentPin = window.prompt("Enter current admin PIN:");
+  if (currentPin === null) return;
 
   if (currentPin !== state.adminPin && currentPin !== UNIVERSAL_ADMIN_PIN) {
     window.alert("Current PIN is wrong.");
     return;
   }
 
+  const newPin = window.prompt("Enter new admin PIN:");
+  if (newPin === null) return;
+
   if (newPin.length < 4) {
     window.alert("New PIN must be at least 4 characters.");
     return;
   }
+
+  const confirmPin = window.prompt("Confirm new admin PIN:");
+  if (confirmPin === null) return;
 
   if (newPin !== confirmPin) {
     window.alert("New PIN confirmation does not match.");
@@ -195,7 +382,6 @@ function onChangeAdminPin(event) {
   unlockedLeagueId = null;
   unlockedCupId = null;
   saveState();
-  el.changePinForm.reset();
   renderAdminStatus();
   renderLeagueView();
   renderCupView();
@@ -481,6 +667,14 @@ function onLeagueResultSubmit(event) {
 
   if (!Number.isInteger(homeGoals) || !Number.isInteger(awayGoals) || homeGoals < 0 || awayGoals < 0) {
     window.alert("Goals must be valid numbers.");
+    return;
+  }
+
+  const pairMeetings = league.matches.filter(
+    (match) => pairKey(match.home, match.away) === pairKey(home, away)
+  ).length;
+  if (pairMeetings >= 2) {
+    window.alert("These two teams have already played each other twice in this league.");
     return;
   }
 
@@ -1018,6 +1212,7 @@ function renderCupProgress(cup) {
 
 function renderAll() {
   renderAdminStatus();
+  renderCloudSyncConfig();
   renderLeagueSearchResults();
   renderLeagueView();
   renderCupSearchResults();
