@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DLS Competition Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="page">
+  <section class="card hero">
+    <h1>DLS Competition Hub</h1>
+    <p>Create private leagues and cups and enforce admin-only result entry.</p>
+    <div>
+      <span class="pill">Free To Join</span>
+      <span class="pill">League + Cup Search</span>
+      <span class="pill">Admin-Locked Results</span>
+    </div>
+    <div class="hero-image-wrap">
+      <img src="trixter-cover.png" alt="Trixter cover" class="hero-image">
+    </div>
+  </section>
+
+  <section class="card grid-2">
+    <div>
+      <h2>Admin Access</h2>
+      <p id="adminStatusText" class="meta">Admin status: Locked</p>
+      <p class="note">Admin credentials are configured and hidden.</p>
+      <div class="inline" style="margin-top:8px;">
+        <button id="approveAdminBtn" type="button">Approve Admin PIN</button>
+        <button id="lockAdminBtn" type="button" class="btn-soft">Lock Admin</button>
+      </div>
+    </div>
+    <div>
+      <h2>Change Admin PIN</h2>
+      <form id="changePinForm" style="display:grid;gap:8px;">
+        <div>
+          <label for="currentPinInput">Current PIN</label>
+          <input id="currentPinInput" type="password" minlength="4" maxlength="24" required>
+        </div>
+        <div>
+          <label for="newPinInput">New PIN</label>
+          <input id="newPinInput" type="password" minlength="4" maxlength="24" required>
+        </div>
+        <div>
+          <label for="confirmNewPinInput">Confirm new PIN</label>
+          <input id="confirmNewPinInput" type="password" minlength="4" maxlength="24" required>
+        </div>
+        <button type="submit">Change PIN</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="card grid-2">
+    <div>
+      <h2>Create League (Admin)</h2>
+      <form id="createLeagueForm" style="display:grid;gap:8px;">
+        <div>
+          <label for="leagueNameInput">League name</label>
+          <input id="leagueNameInput" required placeholder="e.g Kampala Elite League">
+        </div>
+        <div>
+          <label for="leagueTeamsInput">Teams (one per line or comma separated)</label>
+          <textarea id="leagueTeamsInput" placeholder="Team A&#10;Team B&#10;Team C"></textarea>
+        </div>
+        <button type="submit">Create League</button>
+      </form>
+    </div>
+
+    <div>
+      <h2>Find League</h2>
+      <div>
+        <label for="leagueSearchInput">Search by league name</label>
+        <input id="leagueSearchInput" placeholder="Type league name...">
+      </div>
+      <div id="leagueSearchResults" class="search-results"></div>
+
+      <div id="leagueView" class="hidden" style="margin-top:12px;display:grid;gap:8px;">
+        <h3 id="leagueTitle">League</h3>
+        <p id="leagueMeta" class="meta"></p>
+        <div class="inline">
+          <button id="unlockLeagueAdminBtn" type="button" class="btn-soft">Admin: Enter League Result</button>
+          <button id="deleteLeagueBtn" type="button" class="btn-soft">Admin: Delete League</button>
+        </div>
+
+        <form id="leagueResultForm" class="hidden" style="display:grid;gap:8px;">
+          <div class="inline">
+            <div>
+              <label for="leagueHomeSelect">Home team</label>
+              <select id="leagueHomeSelect"></select>
+            </div>
+            <div>
+              <label for="leagueAwaySelect">Away team</label>
+              <select id="leagueAwaySelect"></select>
+            </div>
+          </div>
+          <div class="inline">
+            <div>
+              <label for="leagueHomeScoreInput">Home goals</label>
+              <input id="leagueHomeScoreInput" type="number" min="0" required>
+            </div>
+            <div>
+              <label for="leagueAwayScoreInput">Away goals</label>
+              <input id="leagueAwayScoreInput" type="number" min="0" required>
+            </div>
+          </div>
+          <button type="submit">Save League Result</button>
+        </form>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>GD</th><th>Pts</th>
+              </tr>
+            </thead>
+            <tbody id="leagueTableRows"></tbody>
+          </table>
+        </div>
+        <div id="leagueLog" class="log"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card grid-2">
+    <div>
+      <h2>Create Cup (Admin)</h2>
+      <form id="createCupForm" style="display:grid;gap:8px;">
+        <div>
+          <label for="cupNameInput">Cup name</label>
+          <input id="cupNameInput" required placeholder="e.g DLS Knockout Cup">
+        </div>
+        <div class="inline">
+          <div>
+            <label for="cupGroupCountInput">Number of groups (1-8)</label>
+            <select id="cupGroupCountInput"></select>
+          </div>
+        </div>
+        <div>
+          <label for="cupTeamsInput">Teams (must be exactly 4 teams per group)</label>
+          <textarea id="cupTeamsInput" placeholder="For 2 groups enter exactly 8 teams"></textarea>
+        </div>
+        <button type="submit">Create Cup</button>
+      </form>
+      <p class="note">Cup follows group stage then knockout. Top 2 from each group qualify when group fixtures are complete.</p>
+    </div>
+
+    <div>
+      <h2>Find Cup</h2>
+      <div>
+        <label for="cupSearchInput">Search by cup name</label>
+        <input id="cupSearchInput" placeholder="Type cup name...">
+      </div>
+      <div id="cupSearchResults" class="search-results"></div>
+
+      <div id="cupView" class="hidden" style="margin-top:12px;display:grid;gap:8px;">
+        <h3 id="cupTitle">Cup</h3>
+        <p id="cupMeta" class="meta"></p>
+        <p id="cupProgress" class="meta"></p>
+        <div class="inline">
+          <button id="unlockCupAdminBtn" type="button" class="btn-soft">Admin: Enter Cup Result</button>
+          <button id="deleteCupBtn" type="button" class="btn-soft">Admin: Delete Cup</button>
+        </div>
+
+        <form id="cupResultForm" class="hidden" style="display:grid;gap:8px;">
+          <div>
+            <label for="cupStageSelect">Stage</label>
+            <select id="cupStageSelect">
+              <option value="group">Group Stage</option>
+              <option value="knockout">Knockout</option>
+            </select>
+          </div>
+
+          <div id="cupGroupStageFields" style="display:grid;gap:8px;">
+            <div>
+              <label for="cupGroupSelect">Group</label>
+              <select id="cupGroupSelect"></select>
+            </div>
+            <div class="inline">
+              <div>
+                <label for="cupHomeSelect">Home team</label>
+                <select id="cupHomeSelect"></select>
+              </div>
+              <div>
+                <label for="cupAwaySelect">Away team</label>
+                <select id="cupAwaySelect"></select>
+              </div>
+            </div>
+          </div>
+
+          <div id="cupKnockoutFields" class="hidden">
+            <label for="cupKnockoutMatchSelect">Knockout match</label>
+            <select id="cupKnockoutMatchSelect"></select>
+          </div>
+
+          <div class="inline">
+            <div>
+              <label for="cupHomeScoreInput">Home goals</label>
+              <input id="cupHomeScoreInput" type="number" min="0" required>
+            </div>
+            <div>
+              <label for="cupAwayScoreInput">Away goals</label>
+              <input id="cupAwayScoreInput" type="number" min="0" required>
+            </div>
+          </div>
+
+          <div id="cupTieWinnerWrap" class="hidden">
+            <label for="cupTieWinnerSelect">Winner if draw (penalties)</label>
+            <select id="cupTieWinnerSelect"></select>
+          </div>
+
+          <button type="submit">Save Cup Result</button>
+        </form>
+
+        <div id="cupGroupsContainer" class="group-grid"></div>
+        <div id="cupKnockoutContainer" class="knock-grid"></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
+
