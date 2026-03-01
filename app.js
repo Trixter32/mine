@@ -303,7 +303,6 @@ async function syncFromCloud() {
 
     if (localJson !== remoteJson) {
       state = normalizedRemote;
-      adminApproved = false;
       repairSelectionsAfterStateSwap();
       saveState({ skipCloudPush: true });
       renderAll();
@@ -346,6 +345,8 @@ function onApproveAdmin() {
 
   adminApproved = true;
   renderAdminStatus();
+  renderLeagueView();
+  renderCupView();
   window.alert("Admin approved.");
 }
 
@@ -560,8 +561,7 @@ function renderLeagueView() {
   el.leagueTitle.textContent = league.name;
   el.leagueMeta.textContent = `Teams: ${league.teams.length} | Matches: ${league.matches.length}`;
 
-  const unlocked = unlockedLeagueId === league.id;
-  el.leagueResultForm.classList.toggle("hidden", !unlocked);
+  el.leagueResultForm.classList.toggle("hidden", !adminApproved);
 
   renderLeagueTeamSelects(league);
   renderLeagueTable(league);
@@ -624,11 +624,16 @@ function renderLeagueLog(league) {
 
 function onUnlockLeagueAdmin() {
   const league = getCurrentLeague();
-  if (!league) return;
+  if (!league) {
+    window.alert("Open a league first.");
+    return;
+  }
   if (!ensureAdminApproved()) return;
 
   unlockedLeagueId = league.id;
   renderLeagueView();
+  window.alert("League result form is ready.");
+  el.leagueResultForm.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function onDeleteCurrentLeague() {
@@ -655,11 +660,6 @@ function onLeagueResultSubmit(event) {
   if (!ensureAdminApproved()) return;
   const league = getCurrentLeague();
   if (!league) return;
-
-  if (unlockedLeagueId !== league.id) {
-    window.alert("Admin access required to enter results.");
-    return;
-  }
 
   const home = el.leagueHomeSelect.value;
   const away = el.leagueAwaySelect.value;
@@ -813,8 +813,7 @@ function renderCupView() {
   el.cupTitle.textContent = cup.name;
   el.cupMeta.textContent = `Groups: ${cup.groups.length} | Teams: ${cup.groups.length * 4}`;
 
-  const unlocked = unlockedCupId === cup.id;
-  el.cupResultForm.classList.toggle("hidden", !unlocked);
+  el.cupResultForm.classList.toggle("hidden", !adminApproved);
 
   renderCupFormControls();
   renderCupGroups(cup);
@@ -824,11 +823,16 @@ function renderCupView() {
 
 function onUnlockCupAdmin() {
   const cup = getCurrentCup();
-  if (!cup) return;
+  if (!cup) {
+    window.alert("Open a cup first.");
+    return;
+  }
   if (!ensureAdminApproved()) return;
 
   unlockedCupId = cup.id;
   renderCupView();
+  window.alert("Cup result form is ready.");
+  el.cupResultForm.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function onDeleteCurrentCup() {
@@ -961,11 +965,6 @@ function onCupResultSubmit(event) {
   if (!ensureAdminApproved()) return;
   const cup = getCurrentCup();
   if (!cup) return;
-
-  if (unlockedCupId !== cup.id) {
-    window.alert("Admin access required to enter results.");
-    return;
-  }
 
   const stage = el.cupStageSelect.value;
   const homeGoals = Number(el.cupHomeScoreInput.value);
