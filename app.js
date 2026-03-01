@@ -94,29 +94,44 @@ function init() {
 }
 
 function bindEvents() {
-  el.approveAdminBtn.addEventListener("click", onApproveAdmin);
-  el.lockAdminBtn.addEventListener("click", onLockAdmin);
-  el.changePinPromptBtn.addEventListener("click", onChangeAdminPin);
+  addSafeListener(el.approveAdminBtn, "click", onApproveAdmin);
+  addSafeListener(el.lockAdminBtn, "click", onLockAdmin);
+  addSafeListener(el.changePinPromptBtn, "click", onChangeAdminPin);
 
-  el.createLeagueForm.addEventListener("submit", onCreateLeague);
-  el.leagueSearchInput.addEventListener("input", renderLeagueSearchResults);
-  el.unlockLeagueAdminBtn.addEventListener("click", onUnlockLeagueAdmin);
-  el.deleteLeagueBtn.addEventListener("click", onDeleteCurrentLeague);
-  el.leagueResultForm.addEventListener("submit", onLeagueResultSubmit);
+  addSafeListener(el.createLeagueForm, "submit", onCreateLeague);
+  addSafeListener(el.leagueSearchInput, "input", renderLeagueSearchResults);
+  addSafeListener(el.unlockLeagueAdminBtn, "click", onUnlockLeagueAdmin);
+  addSafeListener(el.deleteLeagueBtn, "click", onDeleteCurrentLeague);
+  addSafeListener(el.leagueResultForm, "submit", onLeagueResultSubmit);
 
-  el.createCupForm.addEventListener("submit", onCreateCup);
-  el.cupSearchInput.addEventListener("input", renderCupSearchResults);
-  el.unlockCupAdminBtn.addEventListener("click", onUnlockCupAdmin);
-  el.deleteCupBtn.addEventListener("click", onDeleteCurrentCup);
-  el.cupResultForm.addEventListener("submit", onCupResultSubmit);
-  el.cupStageSelect.addEventListener("change", renderCupFormControls);
-  el.cupGroupSelect.addEventListener("change", renderCupTeamSelects);
-  el.cupKnockoutMatchSelect.addEventListener("change", onCupMatchChanged);
-  el.cupHomeScoreInput.addEventListener("input", updateCupTieWinnerVisibility);
-  el.cupAwayScoreInput.addEventListener("input", updateCupTieWinnerVisibility);
+  addSafeListener(el.createCupForm, "submit", onCreateCup);
+  addSafeListener(el.cupSearchInput, "input", renderCupSearchResults);
+  addSafeListener(el.unlockCupAdminBtn, "click", onUnlockCupAdmin);
+  addSafeListener(el.deleteCupBtn, "click", onDeleteCurrentCup);
+  addSafeListener(el.cupResultForm, "submit", onCupResultSubmit);
+  addSafeListener(el.cupStageSelect, "change", renderCupFormControls);
+  addSafeListener(el.cupGroupSelect, "change", renderCupTeamSelects);
+  addSafeListener(el.cupKnockoutMatchSelect, "change", onCupMatchChanged);
+  addSafeListener(el.cupHomeScoreInput, "input", updateCupTieWinnerVisibility);
+  addSafeListener(el.cupAwayScoreInput, "input", updateCupTieWinnerVisibility);
 
-  el.leagueSearchResults.addEventListener("click", onLeagueSearchClick);
-  el.cupSearchResults.addEventListener("click", onCupSearchClick);
+  addSafeListener(el.leagueSearchResults, "click", onLeagueSearchClick);
+  addSafeListener(el.cupSearchResults, "click", onCupSearchClick);
+}
+
+function addSafeListener(node, eventName, handler) {
+  if (!node) {
+    console.warn(`Missing element for event binding: ${eventName}`);
+    return;
+  }
+  node.addEventListener(eventName, handler);
+}
+
+function cloneDefaultState() {
+  if (typeof structuredClone === "function") {
+    return structuredClone(defaultState);
+  }
+  return JSON.parse(JSON.stringify(defaultState));
 }
 
 function bindCloudRuntimeEvents() {
@@ -142,21 +157,21 @@ function warnIfRunningFromLocalFile() {
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return structuredClone(defaultState);
+    if (!raw) return cloneDefaultState();
     const parsed = JSON.parse(raw);
     return normalizeState(parsed);
   } catch {
-    return structuredClone(defaultState);
+    return cloneDefaultState();
   }
 }
 
 function normalizeState(parsed) {
-  const parsedPin = typeof parsed?.adminPin === "string" ? parsed.adminPin : "";
+  const parsedPin = parsed && typeof parsed.adminPin === "string" ? parsed.adminPin : "";
   const adminPin = !parsedPin || parsedPin === "1234" ? "35786491" : parsedPin;
   return {
     adminPin,
-    leagues: Array.isArray(parsed?.leagues) ? parsed.leagues : [],
-    cups: Array.isArray(parsed?.cups) ? parsed.cups : []
+    leagues: parsed && Array.isArray(parsed.leagues) ? parsed.leagues : [],
+    cups: parsed && Array.isArray(parsed.cups) ? parsed.cups : []
   };
 }
 
@@ -177,7 +192,7 @@ function loadCloudSyncConfig() {
     const raw = localStorage.getItem(CLOUD_SYNC_CONFIG_KEY);
     if (!raw) return { url: "" };
     const parsed = JSON.parse(raw);
-    return { url: normalizeCloudSyncUrl(parsed?.url || "") };
+    return { url: normalizeCloudSyncUrl(parsed && parsed.url ? parsed.url : "") };
   } catch {
     return { url: "" };
   }
@@ -1277,3 +1292,6 @@ function renderAll() {
   renderCloudSyncConfig();
   renderLeagueSearchResults();
   renderLeagueView();
+  renderCupSearchResults();
+  renderCupView();
+}
