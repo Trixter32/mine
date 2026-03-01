@@ -211,9 +211,9 @@ function getCloudSyncEndpoint() {
   return `${cloudSyncConfig.url}/${STORAGE_KEY}.json`;
 }
 
-function setCloudSyncStatus(message, isError = false) {
+function setCloudSyncStatus(message, isError = false, details = "") {
   if (!el.cloudSyncStatus) return;
-  el.cloudSyncStatus.textContent = message;
+  el.cloudSyncStatus.textContent = details ? `${message} (${details})` : message;
   el.cloudSyncStatus.style.color = isError ? "#ff8f8f" : "#b8cfdf";
 }
 
@@ -285,7 +285,8 @@ function showCloudFailureOnce(action, error) {
   console.error(`[Cloud sync] ${action} failed`, error);
   if (cloudErrorShown) return;
   cloudErrorShown = true;
-  window.alert("Cloud sync failed. Changes may stay only on this device. Check internet and Firebase database rules.");
+  const detail = error && error.message ? error.message : "Unknown error";
+  window.alert(`Cloud sync failed (${action}). ${detail}. Changes may stay only on this device.`);
 }
 
 async function pushStateToCloud(options = {}) {
@@ -301,12 +302,13 @@ async function pushStateToCloud(options = {}) {
       body: JSON.stringify(state)
     });
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      throw new Error(`HTTP ${response.status} on ${endpoint}`);
     }
     cloudErrorShown = false;
     setCloudSyncStatus("Cloud sync: Updated");
   } catch (error) {
-    setCloudSyncStatus("Cloud sync: Failed to push", true);
+    const detail = error && error.message ? error.message : "";
+    setCloudSyncStatus("Cloud sync: Failed to push", true, detail);
     if (!silent) {
       showCloudFailureOnce("push", error);
     }
@@ -337,7 +339,7 @@ async function syncFromCloud() {
     const endpoint = getCloudPullEndpointNoCache();
     const response = await fetch(endpoint, { cache: "no-store" });
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      throw new Error(`HTTP ${response.status} on ${endpoint}`);
     }
     const remote = await response.json();
 
@@ -362,7 +364,8 @@ async function syncFromCloud() {
       setCloudSyncStatus("Cloud sync: Online");
     }
   } catch (error) {
-    setCloudSyncStatus("Cloud sync: Failed to pull", true);
+    const detail = error && error.message ? error.message : "";
+    setCloudSyncStatus("Cloud sync: Failed to pull", true, detail);
     showCloudFailureOnce("pull", error);
   } finally {
     cloudPullInFlight = false;
@@ -1274,6 +1277,3 @@ function renderAll() {
   renderCloudSyncConfig();
   renderLeagueSearchResults();
   renderLeagueView();
-  renderCupSearchResults();
-  renderCupView();
-}
