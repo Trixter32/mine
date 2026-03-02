@@ -77,7 +77,8 @@ const el = {
   cupTieWinnerWrap: document.getElementById("cupTieWinnerWrap"),
   cupTieWinnerSelect: document.getElementById("cupTieWinnerSelect"),
   cupGroupsContainer: document.getElementById("cupGroupsContainer"),
-  cupKnockoutContainer: document.getElementById("cupKnockoutContainer")
+  cupKnockoutContainer: document.getElementById("cupKnockoutContainer"),
+  cupLog: document.getElementById("cupLog")
 };
 
 init();
@@ -891,6 +892,7 @@ function renderCupView() {
   renderCupGroups(cup);
   renderCupKnockout(cup);
   renderCupProgress(cup);
+  renderCupLog(cup);
 }
 
 function onUnlockCupAdmin() {
@@ -1098,6 +1100,7 @@ function onCupResultSubmit(event) {
     match.homeGoals = homeGoals;
     match.awayGoals = awayGoals;
     match.winner = winner;
+    match.playedAt = new Date().toISOString();
 
     advanceCupKnockout(cup);
   }
@@ -1285,6 +1288,41 @@ function renderCupProgress(cup) {
 
   const pending = getPendingKnockoutMatches(cup);
   el.cupProgress.textContent = `Knockout in progress. Pending matches in current round: ${pending.length}.`;
+}
+
+function renderCupLog(cup) {
+  if (!el.cupLog) return;
+
+  const entries = [];
+
+  cup.groups.forEach((group) => {
+    group.matches.forEach((match) => {
+      entries.push({
+        ts: match.createdAt || "",
+        text: `[Group ${group.id}] ${match.home} ${match.homeGoals} - ${match.awayGoals} ${match.away}`
+      });
+    });
+  });
+
+  cup.knockout.rounds.forEach((round, roundIndex) => {
+    round.forEach((match) => {
+      if (!match.away || !match.winner || match.homeGoals === null || match.awayGoals === null) return;
+      entries.push({
+        ts: match.playedAt || "",
+        text: `[Round ${roundIndex + 1}] ${match.home.name} ${match.homeGoals} - ${match.awayGoals} ${match.away.name} | Winner: ${match.winner}`
+      });
+    });
+  });
+
+  if (!entries.length) {
+    el.cupLog.innerHTML = `<div class="log-item">No cup results yet.</div>`;
+    return;
+  }
+
+  entries.sort((a, b) => (Date.parse(b.ts) || 0) - (Date.parse(a.ts) || 0));
+  el.cupLog.innerHTML = entries
+    .map((entry) => `<div class="log-item">${escapeHtml(entry.text)}</div>`)
+    .join("");
 }
 
 function renderAll() {
